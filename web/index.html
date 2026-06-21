@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cardmarket Barcode Pricer</title>
+<style>
+body{margin:0;background:#0b1020;color:#eef3ff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}.wrap{max-width:980px;margin:auto;padding:24px}.card{background:#121a30;border:1px solid #263653;border-radius:18px;padding:18px;margin:14px 0}input,button,label{font-size:18px}input{width:100%;padding:16px;border-radius:14px;border:1px solid #334769;background:#070c18;color:white}button{border:0;border-radius:12px;background:#7dd3fc;color:#07111f;font-weight:800;padding:12px 16px;cursor:pointer}button.secondary{background:#22314f;color:#e8f0ff;border:1px solid #334769}.row{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}.muted{color:#9fb0d0}.candidate{border-left:4px solid #7dd3fc;padding:12px;background:#0d1529;border-radius:12px;margin:12px 0}.price{font-size:24px;font-weight:900}.warn{color:#fcd34d}.err{color:#fca5a5}code{background:#080d18;padding:2px 6px;border-radius:6px}a{color:#7dd3fc}.tiny{font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Cardmarket Barcode Pricer</h1>
+  <p class="muted">Click the input and scan. A 1D scanner normally types the EAN/UPC and presses Enter.</p>
+  <div class="card">
+    <input id="barcode" autofocus placeholder="Scan or type barcode, e.g. 0196214137158">
+    <div class="row">
+      <button id="lookup">Lookup</button>
+      <label><input type="checkbox" id="fixture" checked> use demo fixture fallback first</label>
+      <label><input type="checkbox" id="first"> first/highest-confidence only</label>
+      <label><input type="checkbox" id="autoOpen"> auto-open strongest Cardmarket candidate</label>
+    </div>
+    <p class="muted tiny">Highest-chance workflow: scan → lookup → open strongest Cardmarket page in a new tab. Browser pop-up blockers may require allowing popups for this local page. Direct Cardmarket HTTP may return 403, so price parsing uses cache/fixtures unless you add an API/browser fetcher.</p>
+  </div>
+  <div id="out"></div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+function euro(x){return x==null?'—':'€'+Number(x).toFixed(2)}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function candidate(c,i){
+  const openBtn=`<button class="secondary" onclick="window.open('${esc(c.cardmarket_url)}','_blank')">Open Cardmarket</button>`;
+  if(!c.ok)return `<div class="candidate"><div class="row"><b>${i}. ${esc(c.name)}</b>${openBtn}</div><p class="err">${esc(c.error)}</p><p><a href="${esc(c.cardmarket_url)}" target="_blank">Cardmarket page</a></p></div>`;
+  const p=c.price;
+  return `<div class="candidate"><div class="row"><b>${i}. ${esc(c.name)}</b> <span class="muted">confidence ${esc(c.confidence)}</span>${openBtn}</div><p class="muted">${esc(c.unit||c.category)} · ${esc(c.note||'')}</p><div class="price">From ${euro(p.from_price_eur)} · Trend ${euro(p.price_trend_eur)}</div><p>Available: ${p.available_items??'—'} · 30d ${euro(p.avg_30d_eur)} · 7d ${euro(p.avg_7d_eur)} · 1d ${euro(p.avg_1d_eur)}</p><p class="muted">source: <code>${esc(p.fetched_from)}</code> · <a href="${esc(c.cardmarket_url)}" target="_blank">Cardmarket</a></p></div>`
+}
+async function run(){
+  const b=$('barcode').value.trim();
+  if(!b)return;
+  let popup=null;
+  if($('autoOpen').checked){
+    // Open synchronously while the scanner Enter key still counts as a user gesture.
+    popup=window.open('about:blank','_blank');
+    if(popup){popup.document.write('<p style="font-family:system-ui">Resolving barcode…</p>')}
+  }
+  $('out').innerHTML='<div class="card muted">Looking up…</div>';
+  const url=`/api/lookup?barcode=${encodeURIComponent(b)}&fixture=${$('fixture').checked?1:0}&first=${$('first').checked?1:0}`;
+  const r=await fetch(url);
+  const j=await r.json();
+  const best=(j.candidates||[])[0];
+  if(popup && best?.cardmarket_url){popup.location=best.cardmarket_url}
+  else if($('autoOpen').checked && best?.cardmarket_url){
+    // Fallback if popup was blocked.
+    $('out').innerHTML='<div class="card warn">Popup blocked. Use the Open Cardmarket button below.</div>';
+  }
+  $('out').innerHTML+=`<div class="card"><h2>${esc(j.barcode.normalized)} <span class="muted">valid=${esc(j.barcode.valid)}</span></h2><p class="warn">${esc(j.product_hint?.note||'')}</p>${best?`<p><button onclick="window.open('${esc(best.cardmarket_url)}','_blank')">Open strongest candidate now</button></p>`:''}${(j.candidates||[]).map(candidate).join('')||'<p>No candidates found. Add barcode to data/barcode_aliases.json.</p>'}</div>`;
+  $('barcode').select();
+}
+$('lookup').onclick=run;
+$('barcode').addEventListener('keydown',e=>{if(e.key==='Enter')run()});
+</script>
+</body>
+</html>

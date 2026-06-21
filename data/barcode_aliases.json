@@ -1,0 +1,41 @@
+{
+  "0196214137158": {
+    "name": "Pokémon TCG ME03 Perfect Order sealed product",
+    "note": "EAN validated. External retailers list this EAN for German Perfect Order booster/display; Cardmarket has several matching sealed-product pages, so the system returns candidates rather than guessing silently.",
+    "candidates": [
+      {
+        "name": "Perfect Order Booster",
+        "cardmarket_url": "https://www.cardmarket.com/en/Pokemon/Products/Boosters/Perfect-Order-Booster",
+        "game": "Pokemon",
+        "category": "Boosters",
+        "language": "multi / market listing",
+        "unit": "single booster",
+        "confidence": 0.9,
+        "source": "local_alias+retailer_ean",
+        "note": "Most likely if scanning a single booster barcode. Some retailers also use the same EAN for display listings, so verify packaging."
+      },
+      {
+        "name": "Perfect Order Booster Box",
+        "cardmarket_url": "https://www.cardmarket.com/en/Pokemon/Products/Booster-Boxes/Perfect-Order-Booster-Box",
+        "game": "Pokemon",
+        "category": "Booster Boxes",
+        "language": "multi / market listing",
+        "unit": "booster box / display",
+        "confidence": 0.55,
+        "source": "local_alias+retailer_ean_ambiguous",
+        "note": "Include when scanning display/box packaging or when retailer mapped the same EAN to a display."
+      },
+      {
+        "name": "Perfect Order Booster Box (18 Boosters)",
+        "cardmarket_url": "https://www.cardmarket.com/en/Pokemon/Products/Booster-Boxes/Perfect-Order-Booster-Box-18-Boosters",
+        "game": "Pokemon",
+        "category": "Booster Boxes",
+        "language": "multi / market listing",
+        "unit": "18-boosters box",
+        "confidence": 0.35,
+        "source": "local_alias+set_candidate",
+        "note": "Returned as a lower-confidence set candidate because the barcode alone may not distinguish packaging variants."
+      }
+    ]
+  }
+}
