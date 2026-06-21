@@ -8,6 +8,7 @@ class ProductCandidate:
     barcode: str
     name: str
     cardmarket_url: str
+    idProduct: int | None = None
     game: str = "Pokemon"
     category: str = "Sealed"
     language: str | None = None

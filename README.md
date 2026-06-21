@@ -5,15 +5,74 @@ Local prototype for scanning a sealed-product EAN/UPC with a 1D barcode scanner 
 ## What it does
 
 ```text
-scan/type barcode
+scan/type barcode or use camera scanner
 → validate EAN/UPC
 → resolve barcode to sealed-product candidates
-→ fetch or load Cardmarket product pages
-→ parse Available / From / Price Trend / 30d / 7d / 1d prices
+→ use public Cardmarket daily price guide by idProduct when possible
+→ otherwise load cached/exported Cardmarket product-page text
+→ parse/display Available / From-Low / Price Trend / 30d / 7d / 1d prices
 → show all plausible candidates if barcode is ambiguous
+→ optionally open the strongest Cardmarket candidate
 ```
 
 A USB 1D scanner works because it usually behaves like a keyboard: it types digits and presses Enter.
+
+## GitHub Pages / camera scanner
+
+The static app in `docs/index.html` now includes a camera scanner using the browser `BarcodeDetector` API.
+
+Requirements:
+
+```text
+HTTPS page, e.g. GitHub Pages
+Chrome/Edge recommended
+camera permission granted
+```
+
+Expected Pages URL after pushing and enabling `main /docs`:
+
+```text
+https://whoseyci.github.io/PokeScanner/
+```
+
+The barcode `0196214139299` is now mapped to Lumiose/Illumina City Mini Tin candidates.
+
+## Scan → select → remember
+
+The static UI now supports the intended product flow:
+
+```text
+scan known unambiguous barcode → open strongest Cardmarket page
+scan known ambiguous barcode   → show options → Remember & Open one → next scan opens it automatically
+scan unknown barcode + resolver configured → resolver returns Cardmarket options → Remember & Open one → next scan opens it automatically
+scan unknown barcode without resolver       → paste/select Cardmarket URL once → save local mapping → next scan opens it automatically
+```
+
+This memory is stored in browser `localStorage`. Use **Download local mappings** to export your browser-learned mappings and later merge them into `data/barcode_aliases.json`.
+
+## Optional resolver API
+
+To make unknown barcodes resolve automatically instead of manually searching Cardmarket, the page is preconfigured with this Google Apps Script resolver:
+
+```text
+https://script.google.com/macros/s/AKfycbzPJEot8sQaeBCSPsn-y7jXP32hlDSeHvAx5lshO9uKkshL1kYEMpT3fxrjG0Yy1k9B/exec
+```
+
+The resolver source is kept in:
+
+```text
+apps_script/PokeScannerApi.gs
+```
+
+If you redeploy it later, paste the new `/exec` URL into the PokeScanner page under **Online barcode resolver API**.
+
+The resolver does:
+
+```text
+barcode → product-name hints → fuzzy match against Cardmarket public nonsingles catalog → Cardmarket candidate links + daily price guide data
+```
+
+Because Cardmarket's public product files do not contain EAN/GTIN fields, the resolver still needs either manual barcode hints or an external barcode/product-name provider for truly unknown barcodes.
 
 ## Quick test
 
