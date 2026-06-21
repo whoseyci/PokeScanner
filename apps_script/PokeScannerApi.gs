@@ -28,6 +28,8 @@ const BARCODE_HINTS = {
 // Optional: if you have a paid/free search API, add it here and parse it in lookupExternalBarcode_().
 // For example, a Google Programmable Search endpoint or your own Sheet output.
 const EXTERNAL_BARCODE_LOOKUP_URL_TEMPLATE = ''; // e.g. 'https://example.com/lookup?barcode={{BARCODE}}'
+const ENABLE_UPCITEMDB_LOOKUP = true;
+const ENABLE_BARCODE_MONSTER_LOOKUP = true;
 
 function doGet(e) {
   const barcode = normalizeBarcode_(e.parameter.barcode || e.parameter.ean || e.parameter.upc || '');
@@ -44,8 +46,9 @@ function resolveBarcode_(barcode) {
   const hints = [];
   (BARCODE_HINTS[barcode] || []).forEach(h => hints.push({ text: h, source: 'manual_hint' }));
   lookupExternalBarcode_(barcode).forEach(h => hints.push(h));
+  if (!hints.length) nearbyBarcodeHints_(barcode).forEach(h => hints.push(h));
   if (!hints.length) {
-    return { ok: false, barcode, reason: 'no_product_hints', message: 'Barcode valid maybe, but no product-name source found. Add BARCODE_HINTS entry or configure an external lookup provider.' };
+    return { ok: false, barcode, reason: 'no_product_hints', message: 'Barcode valid maybe, but no product-name source found from APIs/hints. Add BARCODE_HINTS entry or configure an external lookup provider.' };
   }
   const products = loadJsonCached_(CM_URLS.NONSINGLES, 'cm_nonsingles', 6 * 3600).products || [];
   const guideRows = loadJsonCached_(CM_URLS.PRICE_GUIDE, 'cm_priceguide', 6 * 3600).priceGuides || [];
@@ -78,24 +81,80 @@ function resolveBarcode_(barcode) {
 
 function lookupExternalBarcode_(barcode) {
   const out = [];
-  if (!EXTERNAL_BARCODE_LOOKUP_URL_TEMPLATE) return out;
-  try {
-    const url = EXTERNAL_BARCODE_LOOKUP_URL_TEMPLATE.replace('{{BARCODE}}', encodeURIComponent(barcode));
-    const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { Accept: 'application/json,text/plain,*/*' }});
-    if (res.getResponseCode() >= 200 && res.getResponseCode() < 300) {
-      const txt = res.getContentText();
-      try {
-        const j = JSON.parse(txt);
-        const candidates = j.items || j.products || j.results || [];
-        candidates.slice(0, 5).forEach(item => {
-          const t = item.title || item.name || item.product_name || item.description || '';
-          if (t) out.push({ text: t, source: 'external_lookup' });
+
+  // 1) Built-in public UPCItemDB trial endpoint. It has sparse Pokémon coverage, but
+  // when it returns a title this gives the desired barcode -> product-name bridge.
+  if (ENABLE_UPCITEMDB_LOOKUP) {
+    try {
+      const url = 'https://api.upcitemdb.com/prod/trial/lookup?upc=' + encodeURIComponent(barcode);
+      const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { Accept: 'application/json' }});
+      if (res.getResponseCode() === 200) {
+        const j = JSON.parse(res.getContentText());
+        (j.items || []).slice(0, 5).forEach(item => {
+          const text = [item.title, item.brand, item.description].filter(Boolean).join(' ');
+          if (text) out.push({ text, source: 'upcitemdb' });
         });
-      } catch (err) {
-        if (txt) out.push({ text: txt.slice(0, 300), source: 'external_lookup_text' });
       }
+    } catch (err) {}
+  }
+
+  // 2) barcode.monster has some retail products, but also sparse TCG coverage.
+  if (ENABLE_BARCODE_MONSTER_LOOKUP) {
+    try {
+      const url = 'https://barcode.monster/api/' + encodeURIComponent(barcode);
+      const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { Accept: 'application/json' }});
+      if (res.getResponseCode() === 200) {
+        const j = JSON.parse(res.getContentText());
+        const text = [j.description, j.company, j.title, j.name].filter(Boolean).join(' ');
+        if (text) out.push({ text, source: 'barcode_monster' });
+      }
+    } catch (err) {}
+  }
+
+  // 3) Optional custom endpoint. This is where a paid BarcodeLookup API, your own
+  // Google Sheet, or a Programmable Search JSON endpoint should be plugged in.
+  if (EXTERNAL_BARCODE_LOOKUP_URL_TEMPLATE) {
+    try {
+      const url = EXTERNAL_BARCODE_LOOKUP_URL_TEMPLATE.replace('{{BARCODE}}', encodeURIComponent(barcode));
+      const res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { Accept: 'application/json,text/plain,*/*' }});
+      if (res.getResponseCode() >= 200 && res.getResponseCode() < 300) {
+        const txt = res.getContentText();
+        try {
+          const j = JSON.parse(txt);
+          const candidates = j.items || j.products || j.results || [];
+          candidates.slice(0, 5).forEach(item => {
+            const t = item.title || item.name || item.product_name || item.description || '';
+            if (t) out.push({ text: t, source: 'external_lookup' });
+          });
+        } catch (err) {
+          if (txt) out.push({ text: txt.slice(0, 300), source: 'external_lookup_text' });
+        }
+      }
+    } catch (err) {}
+  }
+  return out;
+}
+
+function nearbyBarcodeHints_(barcode) {
+  const out = [];
+  const raw = normalizeBarcode_(barcode);
+  let best = null;
+  Object.keys(BARCODE_HINTS).forEach(known => {
+    if (known === raw) return;
+    let shared = 0;
+    for (let n = Math.min(raw.length, known.length); n >= 8; n--) {
+      if (raw.slice(0, n) === known.slice(0, n)) { shared = n; break; }
     }
-  } catch (err) {}
+    if (!shared) return;
+    const dist = Math.abs(Number(raw) - Number(known));
+    if (shared >= 10 || (shared >= 9 && dist <= 1500)) {
+      const score = shared * 100000 - dist;
+      if (!best || score > best.score) best = { known, shared, dist, score };
+    }
+  });
+  if (best) {
+    BARCODE_HINTS[best.known].forEach(h => out.push({ text: h, source: 'nearby_barcode_family:' + best.known }));
+  }
   return out;
 }
 

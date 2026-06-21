@@ -69,8 +69,18 @@ If you redeploy it later, paste the new `/exec` URL into the PokeScanner page un
 The resolver does:
 
 ```text
-barcode → product-name hints → fuzzy match against Cardmarket public nonsingles catalog → Cardmarket candidate links + daily price guide data
+barcode → barcode API / manual hints / nearby barcode-family fallback → product-name hints → fuzzy match against Cardmarket public nonsingles catalog → Cardmarket candidate links + daily price guide data
 ```
+
+Built-in barcode-name providers in the Apps Script:
+
+```text
+UPCItemDB public trial endpoint
+barcode.monster public endpoint
+optional custom endpoint via EXTERNAL_BARCODE_LOOKUP_URL_TEMPLATE
+```
+
+Important caveat: public barcode APIs have sparse Pokémon sealed-product coverage. If no provider knows the barcode, the resolver cannot infer the product from Cardmarket alone because Cardmarket's public product files do not include EAN/GTIN fields.
 
 Because Cardmarket's public product files do not contain EAN/GTIN fields, the resolver still needs either manual barcode hints or an external barcode/product-name provider for truly unknown barcodes.
 
