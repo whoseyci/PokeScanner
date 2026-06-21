@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cardmarket Barcode Pricer</title>
+<style>
+:root{--bg:#08101e;--panel:#121d33;--panel2:#0e1729;--line:#283a5d;--text:#edf5ff;--muted:#9fb1d2;--accent:#7dd3fc;--accent2:#a78bfa;--warn:#fcd34d;--bad:#fca5a5;--good:#86efac}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0,#1c2d55 0,#08101e 42%,#050913 100%);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}.wrap{max-width:1080px;margin:auto;padding:24px}.card{background:rgba(18,29,51,.92);border:1px solid var(--line);border-radius:20px;padding:18px;margin:14px 0;box-shadow:0 18px 60px rgba(0,0,0,.2)}h1{font-size:30px;margin:0 0 8px}h2{font-size:20px;margin:0 0 10px}.muted{color:var(--muted)}.tiny{font-size:13px}input,button,label,select{font-size:17px}input,select{width:100%;padding:15px;border-radius:14px;border:1px solid #334769;background:#070c18;color:white}button{border:0;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#07111f;font-weight:850;padding:12px 16px;cursor:pointer}button.secondary{background:#22314f;color:#e8f0ff;border:1px solid #334769}.row{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}.grid{display:grid;grid-template-columns:2fr 1fr;gap:14px}@media(max-width:850px){.grid{grid-template-columns:1fr}.row{align-items:flex-start}}.candidate{border-left:4px solid var(--accent);padding:14px;background:#0d172b;border-radius:14px;margin:12px 0}.candidate.best{border-left-color:var(--good)}.price{font-size:26px;font-weight:900;margin:6px 0}.warn{color:var(--warn)}.err{color:var(--bad)}.good{color:var(--good)}code{background:#070c18;border:1px solid #253657;padding:2px 6px;border-radius:6px}a{color:var(--accent)}.pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#243452;margin:2px;font-size:12px}.pill.good{background:#11351f}.pill.warn{background:#3b2d0b}.pill.bad{background:#3b1115}.kbd{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#050a13;border:1px solid #283a5d;border-radius:8px;padding:2px 7px}.hidden{display:none}.stat{font-size:22px;font-weight:850}.footer{margin-top:28px;color:var(--muted);font-size:13px}.notice{border:1px solid #7c6416;background:#241d08;border-radius:14px;padding:12px;color:#ffe7a6}.split{display:grid;grid-template-columns:1fr 1fr;gap:10px}@media(max-width:700px){.split{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Cardmarket Barcode Pricer</h1>
+  <p class="muted">Static GitHub Pages scanner. Scan an EAN/UPC, resolve local sealed-product candidates, show cached/exported prices, and optionally open the strongest Cardmarket product page.</p>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Scan / enter barcode</h2>
+      <input id="barcode" autofocus inputmode="numeric" autocomplete="off" placeholder="Scan or type barcode, e.g. 0196214137158">
+      <div class="row">
+        <button id="lookup">Lookup</button>
+        <button class="secondary" id="clear">Clear</button>
+        <label><input type="checkbox" id="autoOpen"> auto-open strongest Cardmarket page</label>
+        <label><input type="checkbox" id="firstOnly"> show strongest only</label>
+      </div>
+      <p class="muted tiny">Most USB 1D barcode scanners behave like a keyboard: digits + <span class="kbd">Enter</span>. Auto-open is the most reliable Cardmarket workflow because GitHub Pages cannot bypass Cardmarket CORS/login/bot protections.</p>
+    </section>
+
+    <aside class="card">
+      <h2>Loaded data</h2>
+      <p><span class="stat" id="barcodeCount">—</span><br><span class="muted">barcodes mapped</span></p>
+      <p><span class="stat" id="priceCount">—</span><br><span class="muted">cached price pages</span></p>
+      <p class="tiny muted">Data files: <code>data/barcode_aliases.json</code>, <code>data/cardmarket_price_fixtures.json</code></p>
+    </aside>
+  </div>
+
+  <div id="out"></div>
+
+  <section class="card">
+    <h2>Optional: load external daily export</h2>
+    <p class="muted">If you publish a Google Sheet/App Script JSON with newer price snapshots, paste its URL here. It must allow browser CORS and use the same shape as <code>cardmarket_price_fixtures.json</code> or a simple <code>{url: {text: "..."}}</code> map.</p>
+    <div class="row"><input id="externalUrl" placeholder="https://.../prices.json"><button class="secondary" id="loadExternal">Load external prices</button></div>
+    <p id="externalStatus" class="tiny muted"></p>
+  </section>
+
+  <section class="notice">
+    <b>Important:</b> This static page does not live-scrape Cardmarket. It uses cached/exported price text and opens Cardmarket in your browser for the real page. For live German→German filtered prices, plug in an official API, logged-in local fetcher, or your daily Google Sheet export.
+  </section>
+
+  <div class="footer">Built for sealed-product barcode triage. Do not silently trust ambiguous barcodes: choose the packaging candidate that matches the item in hand.</div>
+</div>
+<script>
+const $=id=>document.getElementById(id);let aliases={},prices={};
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function normalizeBarcode(s){return String(s||'').replace(/\D+/g,'')}
+function ean13CheckDigit(first12){let sum=0;for(let i=0;i<12;i++){sum+=Number(first12[i])*(i%2?3:1)}return (10-(sum%10))%10}
+function validEAN13(code){code=normalizeBarcode(code);return code.length===13&&ean13CheckDigit(code.slice(0,12))===Number(code[12])}
+function validUPCA(code){code=normalizeBarcode(code);if(code.length!==12)return false;let sum=0;for(let i=0;i<11;i++){sum+=Number(code[i])*(i%2?1:3)}return (10-(sum%10))%10===Number(code[11])}
+function normalizedCandidates(code){code=normalizeBarcode(code);const arr=[code];if(code.length===12)arr.push('0'+code);return [...new Set(arr)]}
+function euro(x){return x==null?'—':'€'+Number(x).toFixed(2)}
+function intEU(s){const m=String(s||'').match(/[0-9.]+/);return m?Number(m[0].replace(/\./g,'')):null}
+function eurToFloat(s){if(!s)return null;s=String(s).replace('€','').replace(/\s/g,'');if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');const n=Number(s);return Number.isFinite(n)?n:null}
+function stripHtml(t){return String(t||'').replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim()}
+function parsePriceText(text,url){const plain=stripHtml(text);const compact=plain.replace(/\s+/g,'');const title=(String(text).match(/^#\s*(.+)$/m)||[])[1]||'Cardmarket product';function priceAfter(label){let lab=label.replace(/ /g,'\\s*');let re=new RegExp(lab+'\\s*([0-9.]+,[0-9]{2}|[0-9]+(?:\\.[0-9]{2})?)\\s*€','i');let m=plain.match(re);if(!m){let re2=new RegExp(label.replace(/ /g,'')+'([0-9.]+,[0-9]{2})€','i');m=compact.match(re2)}return m?eurToFloat(m[1]):null}let av=(plain.match(/Available\s*items\s*([0-9.]+)/i)||compact.match(/Availableitems([0-9.]+)/i)||[])[1];return{title,url,available_items:intEU(av),from_price_eur:priceAfter('From'),price_trend_eur:priceAfter('Price Trend'),avg_30d_eur:priceAfter('30-days average price'),avg_7d_eur:priceAfter('7-days average price'),avg_1d_eur:priceAfter('1-day average price')}}
+function fixtureFor(url){const item=prices[url];if(!item)return null;return parsePriceText(item.text||item.html||'',url)}
+function resolve(code){for(const c of normalizedCandidates(code)){if(aliases[c])return{matched:c,record:aliases[c]}}return{matched:normalizeBarcode(code),record:null}}
+function candidateHtml(c,i,best){const p=fixtureFor(c.cardmarket_url);const cls='candidate '+(best?'best':'');const open=`<button onclick="window.open('${esc(c.cardmarket_url)}','_blank')">Open Cardmarket</button>`;if(!p){return`<div class="${cls}"><div class="row"><b>${i}. ${esc(c.name)}</b>${open}</div><p class="muted">${esc(c.unit||c.category)} · confidence ${esc(c.confidence)}</p><p class="warn">No cached price for this URL. Open Cardmarket for current price.</p></div>`}return`<div class="${cls}"><div class="row"><b>${i}. ${esc(c.name)}</b><span class="pill ${best?'good':''}">confidence ${esc(c.confidence)}</span>${open}</div><p class="muted">${esc(c.unit||c.category)} · ${esc(c.note||'')}</p><div class="price">From ${euro(p.from_price_eur)} · Trend ${euro(p.price_trend_eur)}</div><div class="split"><p>Available: <b>${p.available_items??'—'}</b></p><p>30d ${euro(p.avg_30d_eur)} · 7d ${euro(p.avg_7d_eur)} · 1d ${euro(p.avg_1d_eur)}</p></div><p class="tiny muted">cached/exported snapshot · <a href="${esc(c.cardmarket_url)}" target="_blank">Cardmarket</a></p></div>`}
+async function lookup(){const raw=$('barcode').value;const code=normalizeBarcode(raw);if(!code)return;const validity=validEAN13(code)||validUPCA(code);const {matched,record}=resolve(code);let popup=null;if($('autoOpen').checked&&record?.candidates?.length){popup=window.open(record.candidates.slice().sort((a,b)=>(b.confidence||0)-(a.confidence||0))[0].cardmarket_url,'_blank')}if(!record){$('out').innerHTML=`<div class="card"><h2>${esc(code)} <span class="pill ${validity?'good':'bad'}">valid=${validity}</span></h2><p class="warn">No local mapping found. Add this barcode to <code>data/barcode_aliases.json</code>.</p></div>`;return}let candidates=(record.candidates||[]).slice().sort((a,b)=>(b.confidence||0)-(a.confidence||0));if($('firstOnly').checked)candidates=candidates.slice(0,1);const best=candidates[0];$('out').innerHTML=`<div class="card"><h2>${esc(matched)} <span class="pill ${validity?'good':'bad'}">valid=${validity}</span></h2><p class="warn">${esc(record.note||'')}</p>${best?`<p><button onclick="window.open('${esc(best.cardmarket_url)}','_blank')">Open strongest candidate</button></p>`:''}${candidates.map((c,i)=>candidateHtml(c,i+1,i===0)).join('')}</div>`;$('barcode').select()}
+async function loadData(){aliases=await fetch('data/barcode_aliases.json').then(r=>r.json());prices=await fetch('data/cardmarket_price_fixtures.json').then(r=>r.json());$('barcodeCount').textContent=Object.keys(aliases).length;$('priceCount').textContent=Object.keys(prices).length}
+$('lookup').onclick=lookup;$('clear').onclick=()=>{$('barcode').value='';$('out').innerHTML='';$('barcode').focus()};$('barcode').addEventListener('keydown',e=>{if(e.key==='Enter')lookup()});$('loadExternal').onclick=async()=>{const url=$('externalUrl').value.trim();if(!url)return;try{const j=await fetch(url).then(r=>r.json());prices={...prices,...j};$('priceCount').textContent=Object.keys(prices).length;$('externalStatus').textContent='Loaded external price JSON.'}catch(e){$('externalStatus').textContent='Failed to load external JSON: '+e}};loadData().catch(e=>{$('out').innerHTML=`<div class="card err">Failed to load data files: ${esc(e)}</div>`});
+</script>
+</body>
+</html>
